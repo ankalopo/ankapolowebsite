@@ -102,6 +102,7 @@ app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/images', express.static(path.join(__dirname, 'images')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/html', express.static(path.join(__dirname, 'html')));
 
 // ==================== PUBLIC ROUTES ====================
 
@@ -140,6 +141,16 @@ app.get('/fine-art/', (req, res) => {
 
 app.get('/contact/', (req, res) => {
   res.sendFile(path.join(__dirname, 'html', 'page_7.html'));
+});
+
+// Stub for legacy journoportfolio articles API (all content is already in the HTML)
+app.get('/api/v1/articles/', (req, res) => {
+  res.set('Content-Type', 'text/html');
+  res.send('');
+});
+app.get('/api/v1/articles/:id/', (req, res) => {
+  res.set('Content-Type', 'text/html');
+  res.send('');
 });
 
 // Contact form API endpoint
@@ -280,37 +291,50 @@ app.get('/admin/media', requireAuth, (req, res) => {
 
 // ==================== ADMIN API ROUTES ====================
 
+// Map file paths to public-facing URLs
+const fileToUrl = {
+  '/index.html': '/',
+  '/html/page_2.html': '/logos/',
+  '/html/page_3.html': '/illustration/',
+  '/html/page_4.html': '/design/',
+  '/html/page_5.html': '/architectural/',
+  '/html/page_6.html': '/fine-art/',
+  '/html/page_7.html': '/contact/',
+};
+
 // Get list of pages
 app.get('/admin/api/pages', requireAuth, async (req, res) => {
   try {
     const pages = [];
-    
+
     // Add main page
     pages.push({
       title: 'Home',
       path: '/index.html',
+      viewUrl: '/',
       isMain: true
     });
-    
+
     // Add pages from html directory
     const htmlDir = path.join(__dirname, 'html');
     if (fsSync.existsSync(htmlDir)) {
       const files = await fs.readdir(htmlDir);
-      
+
       for (const file of files) {
         if (file.endsWith('.html')) {
           const filePath = `/html/${file}`;
           const stats = await fs.stat(path.join(htmlDir, file));
-          
+
           // Try to extract title from file
           try {
             const content = await fs.readFile(path.join(htmlDir, file), 'utf8');
             const titleMatch = content.match(/<title>(.*?)<\/title>/i);
             const title = titleMatch ? titleMatch[1].split('-')[0].trim() : file;
-            
+
             pages.push({
               title,
               path: filePath,
+              viewUrl: fileToUrl[filePath] || filePath,
               modified: stats.mtime,
               isMain: false
             });
@@ -318,6 +342,7 @@ app.get('/admin/api/pages', requireAuth, async (req, res) => {
             pages.push({
               title: file,
               path: filePath,
+              viewUrl: fileToUrl[filePath] || filePath,
               modified: stats.mtime,
               isMain: false
             });
@@ -567,6 +592,61 @@ ${bodyContent}
   } catch (error) {
     console.error('Error saving page content:', error);
     res.status(500).json({ error: 'Error saving page content' });
+  }
+});
+
+// Get raw page HTML (used by the inline editor iframe)
+app.get('/admin/api/page-raw', requireAuth, async (req, res) => {
+  try {
+    const { path: pagePath } = req.query;
+    if (!pagePath) {
+      return res.status(400).send('Path is required');
+    }
+
+    const filePath = path.join(__dirname, pagePath);
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(path.resolve(__dirname))) {
+      return res.status(400).send('Invalid path');
+    }
+
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(404).send('Page not found');
+    }
+
+    const content = await fs.readFile(filePath, 'utf8');
+    res.set('Content-Type', 'text/html');
+    res.send(content);
+  } catch (error) {
+    console.error('Error reading page:', error);
+    res.status(500).send('Error reading page');
+  }
+});
+
+// Save full page HTML (used by the inline editor)
+app.post('/admin/api/save-full-page', requireAuth, async (req, res) => {
+  try {
+    const { path: pagePath, content } = req.body;
+
+    if (!pagePath || !content) {
+      return res.status(400).json({ error: 'Path and content are required' });
+    }
+
+    // Only allow saving to known page locations
+    const filePath = path.join(__dirname, pagePath);
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(path.resolve(__dirname))) {
+      return res.status(400).json({ error: 'Invalid path' });
+    }
+
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    await fs.writeFile(filePath, content);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving page:', error);
+    res.status(500).json({ error: 'Error saving page' });
   }
 });
 
