@@ -365,7 +365,7 @@
                 
                 if (response.ok) {
                     closeNewPageModal();
-                    window.location.href = `/admin/editor?page=${encodeURIComponent(data.path)}`;
+                    window.location.href = `/admin/builder?page=${encodeURIComponent(data.path)}`;
                 } else {
                     alert(data.error || 'Error creating page');
                 }

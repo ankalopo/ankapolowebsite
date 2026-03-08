@@ -284,6 +284,11 @@ app.get('/admin/editor', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'editor.html'));
 });
 
+// Admin page builder (for new pages)
+app.get('/admin/builder', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'builder.html'));
+});
+
 // Admin media manager
 app.get('/admin/media', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'media.html'));
