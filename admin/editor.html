@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Editor - Admin Panel</title>
+    <link href="https://unpkg.com/grapesjs@0.21.13/dist/css/grapes.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+        .toolbar {
+            background: #2c3e50;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 999;
+        }
+        .toolbar-left { display: flex; gap: 15px; align-items: center; }
+        .toolbar h1 { font-size: 18px; margin-right: 20px; }
+        .page-name { color: #ecf0f1; font-size: 14px; }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s;
+        }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover { background: #229954; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+
+        #gjs { border: 3px solid #444; height: calc(100vh - 52px); }
+
+        .gjs-cv-canvas { background: #f5f5f5; }
+        .gjs-pn-panel { background: #34495e; }
+        .gjs-pn-btn { color: #ecf0f1; }
+
+        .saving-indicator, .saved-indicator {
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .saving-indicator { color: #f39c12; }
+        .saved-indicator { color: #27ae60; }
+        .saving-indicator.show, .saved-indicator.show { display: flex; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <h1>Page Editor</h1>
+            <span class="page-name" id="pageName">Loading...</span>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <div class="saving-indicator" id="savingIndicator">
+                <span class="spinner">&#9203;</span>
+                <span>Saving...</span>
+            </div>
+            <div class="saved-indicator" id="savedIndicator">
+                <span>&#10004;</span>
+                <span>Saved</span>
+            </div>
+            <button onclick="savePage(true)" class="btn btn-success">Save &amp; Exit</button>
+            <a href="/admin/dashboard" class="btn btn-secondary">&larr; Dashboard</a>
+        </div>
+    </div>
+
+    <div id="gjs"></div>
+
+    <script src="https://unpkg.com/grapesjs@0.21.13"></script>
+    <script src="https://unpkg.com/grapesjs-blocks-basic@1.0.2"></script>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const pagePath = urlParams.get('page');
+
+        if (!pagePath) {
+            alert('No page specified');
+            window.location.href = '/admin/dashboard';
+        }
+
+        document.getElementById('pageName').textContent = pagePath;
+
+        // Store original body attributes from server
+        let originalBodyAttrs = '';
+
+        const editor = grapesjs.init({
+            container: '#gjs',
+            height: '100%',
+            width: 'auto',
+            storageManager: false,
+            plugins: ['gjs-blocks-basic'],
+            pluginsOpts: {
+                'gjs-blocks-basic': {
+                    flexGrid: true
+                }
+            },
+            canvas: {
+                styles: ['/css/styles.css'],
+                scripts: []
+            },
+            assetManager: {
+                upload: '/admin/api/upload',
+                uploadName: 'files',
+                multiUpload: true,
+                autoAdd: true,
+                assets: []
+            },
+            // Allow scripts and all tags to pass through
+            parser: {
+                optionsHtml: {
+                    allowScripts: true,
+                    allowUnsafeAttr: true
+                }
+            }
+        });
+
+        // After loading content, apply body attributes to the canvas iframe body
+        function applyBodyAttrs() {
+            if (!originalBodyAttrs) return;
+            const iframe = editor.Canvas.getFrameEl();
+            if (!iframe) return;
+            const iframeBody = iframe.contentDocument.body;
+            // Parse attributes from the string
+            const temp = document.createElement('div');
+            temp.innerHTML = '<div ' + originalBodyAttrs + '></div>';
+            const attrs = temp.firstChild.attributes;
+            for (let i = 0; i < attrs.length; i++) {
+                iframeBody.setAttribute(attrs[i].name, attrs[i].value);
+            }
+        }
+
+        async function loadPage() {
+            try {
+                const response = await fetch('/admin/api/page-content?path=' + encodeURIComponent(pagePath));
+                const data = await response.json();
+
+                if (response.ok) {
+                    originalBodyAttrs = data.bodyAttrs || '';
+                    editor.setComponents(data.html || '');
+                    editor.setStyle(data.css || '');
+
+                    // Load uploaded images into asset manager
+                    if (data.assets && data.assets.length > 0) {
+                        editor.AssetManager.add(data.assets);
+                    }
+
+                    // Also add images/ folder assets
+                    loadLocalImages();
+
+                    // Apply body attributes to iframe after a short delay
+                    setTimeout(applyBodyAttrs, 500);
+                } else {
+                    console.error('Error loading page:', data.error);
+                    alert('Error loading page: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error loading page:', error);
+                alert('Error loading page. Check the console for details.');
+            }
+        }
+
+        async function loadLocalImages() {
+            try {
+                const response = await fetch('/admin/api/images');
+                const data = await response.json();
+                if (data.images) {
+                    data.images.forEach(function(img) {
+                        editor.AssetManager.add({ src: img.url, name: img.name });
+                    });
+                }
+            } catch (e) {
+                // Silently fail - images just won't appear in asset manager
+            }
+        }
+
+        // Save
+        let isSaving = false;
+        let saveTimeout;
+        let hasUnsavedChanges = false;
+
+        editor.on('change:changesCount', function() {
+            hasUnsavedChanges = true;
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(function() { savePage(false); }, 3000);
+        });
+
+        async function savePage(andExit) {
+            if (isSaving) return;
+            isSaving = true;
+            showSavingIndicator();
+
+            try {
+                const html = editor.getHtml();
+                const css = editor.getCss();
+
+                const response = await fetch('/admin/api/page-content', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: pagePath,
+                        html: html,
+                        css: css
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Save failed');
+                }
+
+                hasUnsavedChanges = false;
+                showSavedIndicator();
+
+                if (andExit) {
+                    window.location.href = '/admin/dashboard';
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                if (andExit) {
+                    alert('Error saving page. Please try again.');
+                }
+            }
+
+            isSaving = false;
+        }
+
+        function showSavingIndicator() {
+            document.getElementById('savingIndicator').classList.add('show');
+            document.getElementById('savedIndicator').classList.remove('show');
+        }
+
+        function showSavedIndicator() {
+            document.getElementById('savingIndicator').classList.remove('show');
+            document.getElementById('savedIndicator').classList.add('show');
+            setTimeout(function() {
+                document.getElementById('savedIndicator').classList.remove('show');
+            }, 3000);
+        }
+
+        // Ctrl+S / Cmd+S
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                savePage(false);
+            }
+        });
+
+        // Warn before leaving with unsaved changes
+        window.addEventListener('beforeunload', function(e) {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        loadPage();
+    </script>
+</body>
+</html>

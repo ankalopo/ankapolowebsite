@@ -1,0 +1,173 @@
+require('dotenv').config();
+const express = require('express');
+const path = require('path');
+const nodemailer = require('nodemailer');
+const axios = require('axios');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Configure email transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.EMAIL_PORT) || 587,
+  secure: process.env.EMAIL_SECURE === 'true',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// Verify email configuration on startup
+transporter.verify(function(error, success) {
+  if (error) {
+    console.log('⚠️  Email configuration error:', error.message);
+    console.log('   Contact form will not work until email is configured properly.');
+  } else {
+    console.log('✓ Email server is ready to send messages');
+  }
+});
+
+// Serve static files from the current directory
+app.use(express.static(__dirname));
+
+// Parse JSON bodies (for future API endpoints)
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve the main page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Handle HTML pages
+app.get('/page_:num', (req, res) => {
+  const pageNum = req.params.num;
+  const filePath = path.join(__dirname, 'html', `page_${pageNum}.html`);
+  res.sendFile(filePath);
+});
+
+// Friendly URL routes
+app.get('/logos/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'page_2.html'));
+});
+
+app.get('/illustration/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'page_3.html'));
+});
+
+app.get('/design/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'page_4.html'));
+});
+
+app.get('/architectural/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'page_5.html'));
+});
+
+app.get('/fine-art/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'page_6.html'));
+});
+
+app.get('/contact/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'page_7.html'));
+});
+
+// Contact form API endpoint
+app.post('/api/v1/message/', async (req, res) => {
+  try {
+    const { name, email, message, phone, captcha_token } = req.body;
+
+    // Basic validation
+    if (!email || !message) {
+      return res.status(400).json({
+        email: !email ? ['Email is required'] : undefined,
+        message: !message ? ['Message is required'] : undefined
+      });
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        email: ['Please enter a valid email address']
+      });
+    }
+
+    // Optional: Verify reCAPTCHA
+    if (process.env.VERIFY_RECAPTCHA === 'true' && process.env.RECAPTCHA_SECRET_KEY) {
+      try {
+        const recaptchaResponse = await axios.post(
+          `https://www.google.com/recaptcha/api/siteverify`,
+          null,
+          {
+            params: {
+              secret: process.env.RECAPTCHA_SECRET_KEY,
+              response: captcha_token
+            }
+          }
+        );
+
+        if (!recaptchaResponse.data.success) {
+          return res.status(400).json({
+            message: ['reCAPTCHA verification failed']
+          });
+        }
+      } catch (error) {
+        console.error('reCAPTCHA verification error:', error.message);
+      }
+    }
+
+    // Prepare email
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: process.env.EMAIL_TO,
+      subject: `New Contact Form Message from ${name || email}`,
+      html: `
+        <h2>New Contact Form Submission</h2>
+        <p><strong>Name:</strong> ${name || 'Not provided'}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        ${phone ? `<p><strong>Phone:</strong> ${phone}</p>` : ''}
+        <p><strong>Message:</strong></p>
+        <p>${message.replace(/\n/g, '<br>')}</p>
+        <hr>
+        <p style="color: #666; font-size: 12px;">Sent from: ${req.headers.host} at ${new Date().toLocaleString()}</p>
+      `,
+      text: `
+New Contact Form Submission
+
+Name: ${name || 'Not provided'}
+Email: ${email}
+${phone ? `Phone: ${phone}` : ''}
+
+Message:
+${message}
+
+---
+Sent from: ${req.headers.host} at ${new Date().toLocaleString()}
+      `
+    };
+
+    // Send email
+    await transporter.sendMail(mailOptions);
+
+    console.log(`✓ Contact form message sent from ${email}`);
+    res.json({ success: true, message: 'Message sent successfully' });
+
+  } catch (error) {
+    console.error('Error sending contact form:', error);
+    res.status(500).json({
+      message: ['Failed to send message. Please try again later.']
+    });
+  }
+});
+
+// Add your custom API routes here as you build them
+// Example:
+// app.get('/api/data', (req, res) => {
+//   res.json({ message: 'Hello from API' });
+// });
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
