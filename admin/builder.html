@@ -272,6 +272,9 @@
 
             <h3>Basic</h3>
             <div class="blocks-grid" id="basicBlocks"></div>
+
+            <h3>Hive Blockchain</h3>
+            <div class="blocks-grid" id="hiveBlocks"></div>
         </div>
 
         <!-- CANVAS: The page being built -->
@@ -558,6 +561,49 @@
             }
         });
 
+        // ==================== REGISTER HIVE COMPONENTS ====================
+        // Tell GrapesJS how to handle Hive custom elements
+        ['hive-post', 'hive-post-header', 'hive-post-content', 'hive-post-footer', 'hive-comments', 'hive-witness', 'hive-tag'].forEach(function(tagName) {
+            editor.DomComponents.addType(tagName, {
+                isComponent: function(el) {
+                    if (el.tagName && el.tagName.toLowerCase() === tagName) {
+                        return { type: tagName };
+                    }
+                },
+                model: {
+                    defaults: {
+                        tagName: tagName,
+                        draggable: true,
+                        droppable: false,
+                        editable: false,
+                        void: false
+                    }
+                },
+                view: {
+                    onRender: function() {
+                        var el = this.el;
+                        el.style.minHeight = '60px';
+                        el.style.border = '2px dashed #e74c3c';
+                        el.style.borderRadius = '8px';
+                        el.style.display = 'flex';
+                        el.style.alignItems = 'center';
+                        el.style.justifyContent = 'center';
+                        el.style.padding = '20px';
+                        el.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
+                        el.style.color = '#e74c3c';
+                        el.style.fontFamily = 'monospace';
+                        el.style.fontSize = '14px';
+                        var attrs = this.model.getAttributes();
+                        var info = tagName;
+                        if (attrs.permlink) info += ' — ' + attrs.permlink;
+                        else if (attrs.account) info += ' — @' + attrs.account;
+                        else if (attrs.tag) info += ' — #' + attrs.tag;
+                        el.innerHTML = '<div style="text-align:center;"><div style="font-size:24px; margin-bottom:8px;">&#x2B21;</div><div>&lt;' + info + '&gt;</div><div style="font-size:11px; color:#888; margin-top:4px;">Renders live on the published page</div></div>';
+                    }
+                }
+            });
+        });
+
         // ==================== BLOCK DEFINITIONS ====================
 
         var blockDefs = {
@@ -692,6 +738,34 @@
                     hasUnsavedChanges = true;
                 });
                 basicGrid.appendChild(el);
+            });
+
+            // Hive blockchain blocks
+            var hiveSvg = '<svg viewBox="0 0 24 24" width="32" height="32"><path d="M12 2L3 7v10l9 5 9-5V7l-9-5zm0 2.18L18.39 7.5 12 10.82 5.61 7.5 12 4.18zM5 9.06l6 3.33v6.55L5 15.61V9.06zm8 9.88v-6.55l6-3.33v6.55l-6 3.33z" fill="currentColor"/></svg>';
+            var hiveBlocks = [
+                { label: 'Post', icon: hiveSvg, content: '<hive-post permlink="@gtg/hello-world" theme="auto"></hive-post>' },
+                { label: 'Comments', icon: hiveSvg, content: '<hive-comments permlink="@gtg/hello-world" theme="auto"></hive-comments>' },
+                { label: 'Witness', icon: hiveSvg, content: '<hive-witness account="gtg" theme="auto"></hive-witness>' },
+                { label: 'Tag Feed', icon: hiveSvg, content: '<hive-tag tag="photography" posts-per-page="4" theme="auto"></hive-tag>' },
+                { label: 'Post Header', icon: hiveSvg, content: '<hive-post-header permlink="@gtg/hello-world" theme="auto"></hive-post-header>' },
+                { label: 'Post Content', icon: hiveSvg, content: '<hive-post-content permlink="@gtg/hello-world" theme="auto"></hive-post-content>' },
+                { label: 'Post Footer', icon: hiveSvg, content: '<hive-post-footer permlink="@gtg/hello-world" theme="auto"></hive-post-footer>' }
+            ];
+            var hiveGrid = document.getElementById('hiveBlocks');
+            hiveBlocks.forEach(function(b) {
+                var el = document.createElement('div');
+                el.className = 'block-item';
+                el.innerHTML = b.icon + '<span>' + b.label + '</span>';
+                el.draggable = true;
+                el.addEventListener('dragstart', function(e) {
+                    e.dataTransfer.setData('text/html', b.content);
+                    e.dataTransfer.effectAllowed = 'copy';
+                });
+                el.addEventListener('click', function() {
+                    editor.addComponents(b.content);
+                    hasUnsavedChanges = true;
+                });
+                hiveGrid.appendChild(el);
             });
         }
 
@@ -828,6 +902,7 @@
             else if (tag.match(/^h[1-6]$/)) typeLabel = 'Heading ' + tag[1];
             else if (tag === 'p') typeLabel = 'Paragraph';
             else if (tag === 'button') typeLabel = 'Button';
+            else if (tag.startsWith('hive-')) typeLabel = 'Hive: ' + tag.replace('hive-', '').replace(/-/g, ' ');
 
             // Add a small label showing what's selected
             var typeRow = document.createElement('div');
@@ -868,12 +943,85 @@
                 props.push({ name: 'src', label: 'Embed URL', value: attrs.src || '', placeholder: 'https://...' });
             }
 
+            // Hive blockchain components
+            var hiveComponents = {
+                'hive-post': [
+                    { name: 'permlink', label: 'Permlink', placeholder: '@author/post-slug' },
+                    { name: 'theme', label: 'Theme', type: 'select', options: [
+                        { value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }
+                    ]},
+                    { name: 'preview', label: 'Preview mode', type: 'checkbox' },
+                    { name: 'max-length', label: 'Preview length', placeholder: '300' },
+                    { name: 'front-base-url', label: 'Front URL', placeholder: 'https://hive.blog' }
+                ],
+                'hive-post-header': [
+                    { name: 'permlink', label: 'Permlink', placeholder: '@author/post-slug' },
+                    { name: 'theme', label: 'Theme', type: 'select', options: [
+                        { value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }
+                    ]},
+                    { name: 'show-title', label: 'Show title', type: 'checkbox' }
+                ],
+                'hive-post-content': [
+                    { name: 'permlink', label: 'Permlink', placeholder: '@author/post-slug' },
+                    { name: 'theme', label: 'Theme', type: 'select', options: [
+                        { value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }
+                    ]},
+                    { name: 'preview', label: 'Preview mode', type: 'checkbox' },
+                    { name: 'max-length', label: 'Preview length', placeholder: '300' },
+                    { name: 'front-base-url', label: 'Front URL', placeholder: 'https://hive.blog' }
+                ],
+                'hive-post-footer': [
+                    { name: 'permlink', label: 'Permlink', placeholder: '@author/post-slug' },
+                    { name: 'theme', label: 'Theme', type: 'select', options: [
+                        { value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }
+                    ]},
+                    { name: 'show-tags', label: 'Show tags', type: 'checkbox' },
+                    { name: 'show-payout', label: 'Show payout', type: 'checkbox' },
+                    { name: 'show-link', label: 'Show link', type: 'checkbox' },
+                    { name: 'front-base-url', label: 'Front URL', placeholder: 'https://hive.blog' }
+                ],
+                'hive-comments': [
+                    { name: 'permlink', label: 'Permlink', placeholder: '@author/post-slug' },
+                    { name: 'theme', label: 'Theme', type: 'select', options: [
+                        { value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }
+                    ]},
+                    { name: 'max-depth', label: 'Max depth', placeholder: '3' },
+                    { name: 'initial-limit', label: 'Initial limit', placeholder: '10' },
+                    { name: 'front-base-url', label: 'Front URL', placeholder: 'https://hive.blog' }
+                ],
+                'hive-witness': [
+                    { name: 'account', label: 'Account', placeholder: 'witness-name' },
+                    { name: 'theme', label: 'Theme', type: 'select', options: [
+                        { value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }
+                    ]}
+                ],
+                'hive-tag': [
+                    { name: 'tag', label: 'Tag', placeholder: 'photography' },
+                    { name: 'theme', label: 'Theme', type: 'select', options: [
+                        { value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }
+                    ]},
+                    { name: 'posts-per-page', label: 'Posts per page', placeholder: '10' },
+                    { name: 'preview-length', label: 'Preview length', placeholder: '150' },
+                    { name: 'url-template', label: 'URL template', placeholder: '/post/{author}/{permlink}' },
+                    { name: 'front-base-url', label: 'Front URL', placeholder: 'https://hive.blog' }
+                ]
+            };
+            if (hiveComponents[tag]) {
+                hiveComponents[tag].forEach(function(hProp) {
+                    var val = attrs[hProp.name] || '';
+                    if (hProp.type === 'checkbox') {
+                        val = attrs[hProp.name] !== undefined && attrs[hProp.name] !== 'false';
+                    }
+                    props.push({ name: hProp.name, label: hProp.label, value: val, placeholder: hProp.placeholder || '', type: hProp.type || 'text', options: hProp.options });
+                });
+            }
+
             // ID (useful for anchor links)
             props.push({ name: 'id', label: 'ID', value: attrs.id || '', placeholder: 'e.g. about-section' });
 
             if (props.length <= 1) {
                 // Only the ID field, not very useful — hide section if just a generic div
-                if (tag !== 'a' && tag !== 'img' && tag !== 'iframe') {
+                if (tag !== 'a' && tag !== 'img' && tag !== 'iframe' && !tag.startsWith('hive-')) {
                     propsSection.style.display = 'none';
                     return;
                 }
@@ -935,6 +1083,19 @@
                         applyAttribute(component, prop.name, this.value);
                     });
                     row.appendChild(select);
+                } else if (prop.type === 'checkbox') {
+                    var checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = !!prop.value;
+                    checkbox.style.cssText = 'width:auto; margin:0;';
+                    checkbox.addEventListener('change', function() {
+                        if (this.checked) {
+                            applyAttribute(component, prop.name, '');
+                        } else {
+                            component.removeAttributes(prop.name);
+                        }
+                    });
+                    row.appendChild(checkbox);
                 } else if (prop.hasImagePicker) {
                     var wrapper = document.createElement('div');
                     wrapper.style.cssText = 'flex:1; display:flex; flex-direction:column; gap:6px;';
@@ -977,6 +1138,19 @@
             var attrs = {};
             attrs[name] = value;
             component.setAttributes(Object.assign({}, component.getAttributes(), attrs));
+            // Force iframe to reload with new src
+            if (name === 'src' && component.get('tagName').toLowerCase() === 'iframe') {
+                var view = component.getView();
+                if (view && view.el) {
+                    view.el.setAttribute('src', value);
+                }
+            }
+            // Re-render Hive component placeholder when attributes change
+            var tagName = component.get('tagName').toLowerCase();
+            if (tagName.startsWith('hive-')) {
+                var view = component.getView();
+                if (view && view.onRender) view.onRender();
+            }
             hasUnsavedChanges = true;
         }
 

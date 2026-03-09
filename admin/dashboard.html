@@ -326,7 +326,7 @@
                     <h3>${page.title}</h3>
                     <p>${page.path}</p>
                     <div class="page-actions">
-                        <a href="/admin/editor?page=${encodeURIComponent(page.path)}" class="btn btn-primary btn-small">✏️ Edit</a>
+                        <a href="/admin/builder?page=${encodeURIComponent(page.path)}" class="btn btn-primary btn-small">✏️ Edit</a>
                         <a href="${page.viewUrl || page.path}" class="btn btn-secondary btn-small" target="_blank">👁️ View</a>
                         ${!page.isMain ? `<button onclick="deletePage('${page.path}')" class="btn btn-danger btn-small">🗑️</button>` : ''}
                     </div>

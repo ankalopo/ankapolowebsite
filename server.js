@@ -580,6 +580,21 @@ app.post('/admin/api/page-content', requireAuth, async (req, res) => {
     let bodyContent = html || '';
     bodyContent = bodyContent.replace(/^<body[^>]*>/i, '').replace(/<\/body>\s*$/i, '');
 
+    // Auto-inject Hive component scripts if page uses any hive-* elements
+    const usesHive = /<hive-/i.test(bodyContent);
+    // Remove any previously injected Hive scripts so we don't duplicate
+    cleanHead = cleanHead.replace(/<!-- hive-components-start -->[\s\S]*?<!-- hive-components-end -->\n?/g, '');
+    if (usesHive) {
+      const hiveScripts = `<!-- hive-components-start -->
+<script type="importmap">{"imports":{"lit":"https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js","@hiveio/internal":"https://gtg.openhive.network/5bb236/hive-internal.js"}}</script>
+<script type="module" src="https://gtg.openhive.network/5bb236/hive-post.js"></script>
+<script type="module" src="https://gtg.openhive.network/5bb236/hive-witness.js"></script>
+<script type="module" src="https://gtg.openhive.network/5bb236/hive-comments.js"></script>
+<script type="module" src="https://gtg.openhive.network/5bb236/hive-tag.js"></script>
+<!-- hive-components-end -->`;
+      cleanHead += '\n' + hiveScripts;
+    }
+
     // Reconstruct the HTML
     const newContent = `<!DOCTYPE html>
 <html lang="en">
